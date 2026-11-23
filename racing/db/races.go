@@ -2,11 +2,12 @@ package db
 
 import (
 	"database/sql"
-	"github.com/golang/protobuf/ptypes"
-	_ "github.com/mattn/go-sqlite3"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/golang/protobuf/ptypes"
+	_ "github.com/mattn/go-sqlite3"
 
 	"git.neds.sh/matty/entain/racing/proto/racing"
 )
@@ -77,6 +78,14 @@ func (r *racesRepo) applyFilter(query string, filter *racing.ListRacesRequestFil
 		for _, meetingID := range filter.MeetingIds {
 			args = append(args, meetingID)
 		}
+	}
+
+	// Only restrict by visibility when explicitly asked to; the default
+	// (false) keeps returning all races. visible is stored as an INTEGER
+	// (0 or 1) because SQLite has no boolean type, so the bound value is 1.
+	if filter.OnlyVisible {
+		clauses = append(clauses, "visible = ?")
+		args = append(args, 1)
 	}
 
 	if len(clauses) != 0 {
