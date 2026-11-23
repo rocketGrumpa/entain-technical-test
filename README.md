@@ -114,3 +114,50 @@ go get github.com/grpc-ecosystem/grpc-gateway/v2/protoc-gen-grpc-gateway github.
 - [Google API Design](https://cloud.google.com/apis/design)
 - [Go Modules](https://golang.org/ref/mod)
 - [Ubers Go Style Guide](https://github.com/uber-go/guide/blob/2910ce2e11d0e0cba2cece2c60ae45e3a984ffe5/style.md)
+
+
+
+---------
+
+## Changes
+
+### Task 1: only visible filter
+
+`ListRaces` accepts an `onlyVisible` filter. Set it to `true` to get visible races only. Leave it out, or set it to `false`, to get all races as before.
+
+```bash
+curl -X "POST" "http://localhost:8000/v1/list-races" \
+     -H 'Content-Type: application/json' \
+     -d $'{"filter": {"onlyVisible": true}}'
+```
+
+Checked against the seeded database (100 races, 54 visible):
+
+| Request | Before | After |
+| --- | --- | --- |
+| `{"filter": {}}` | 100 | 100 |
+| `{"filter": {"onlyVisible": true}}` | 100 | 54 |
+
+#### Changing the filter
+
+A request goes through two services: `api` receives the JSON, then passes it on to `racing`. Each service has its own copy of the proto file:
+
+- `api/proto/racing/racing.proto`
+- `racing/proto/racing/racing.proto`
+
+When you add or change a filter field, please update both files, then run `go generate ./...` in `api` and in `racing`.
+
+If `api/proto/racing/racing.proto` doesn't have the field, `api` ignores it without any error, so the filter does nothing and every race comes back. That's why `onlyVisible: true` returned all 100 races before this change.
+
+#### Tests
+
+`racing/db/races_test.go` tests the filter in two ways:
+
+- A unit test checks the SQL that `applyFilter` builds.
+- An integration test runs `List` against an in-memory SQLite database with three fixed races, so the result doesn't depend on the seeded data.
+
+Run them from the project root:
+
+```bash
+cd racing && go test ./...
+```
