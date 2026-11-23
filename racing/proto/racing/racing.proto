@@ -24,6 +24,14 @@ message ListRacesResponse {
 // Filter for listing races.
 message ListRacesRequestFilter {
   repeated int64 meeting_ids = 1;
+  // only_visible, when true, returns only races marked as visible.
+  // When omitted or false, races are returned regardless of visibility,
+  // so existing callers keep getting all races.
+  //
+  // Named only_visible rather than visible: a plain proto3 bool cannot
+  // tell "not set" apart from false, so a field called visible would be
+  // ambiguous about whether false means "all races" or "hidden races only".
+  bool only_visible = 2;
 }
 
 /* Resources */
