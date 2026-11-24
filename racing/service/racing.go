@@ -1,9 +1,14 @@
 package service
 
 import (
+	"fmt"
+	"strings"
+
 	"git.neds.sh/matty/entain/racing/db"
 	"git.neds.sh/matty/entain/racing/proto/racing"
 	"golang.org/x/net/context"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 type Racing interface {
@@ -22,10 +27,62 @@ func NewRacingService(racesRepo db.RacesRepo) Racing {
 }
 
 func (s *racingService) ListRaces(ctx context.Context, in *racing.ListRacesRequest) (*racing.ListRacesResponse, error) {
-	races, err := s.racesRepo.List(in.Filter)
+	// Validate order_by here, before the repository, so a bad value is
+	// reported to the caller as INVALID_ARGUMENT instead of being ignored.
+	orderBy, err := parseOrderBy(in.GetOrderBy())
+	if err != nil {
+		return nil, status.Error(codes.InvalidArgument, err.Error())
+	}
+
+	races, err := s.racesRepo.List(in.Filter, orderBy)
 	if err != nil {
 		return nil, err
 	}
 
 	return &racing.ListRacesResponse{Races: races}, nil
+}
+
+// parseOrderBy turns an order_by value such as
+// "meeting_id, advertised_start_time desc" into validated sort keys,
+// following the AIP-132 format. An empty value means the default order:
+// earliest advertised start time first.
+func parseOrderBy(orderBy string) ([]db.OrderBy, error) {
+	if strings.TrimSpace(orderBy) == "" {
+		return []db.OrderBy{{Field: "advertised_start_time"}}, nil
+	}
+
+	var (
+		keys []db.OrderBy
+		seen = make(map[string]bool)
+	)
+
+	for _, part := range strings.Split(orderBy, ",") {
+		words := strings.Fields(part)
+		if len(words) == 0 || len(words) > 2 {
+			return nil, fmt.Errorf("invalid order_by entry %q", strings.TrimSpace(part))
+		}
+
+		field := words[0]
+		if !db.IsSortableField(field) {
+			return nil, fmt.Errorf("unsupported order_by field %q", field)
+		}
+		// A repeated field is ambiguous ("id, id desc") and also keeps the
+		// number of sort keys bounded by the number of sortable fields.
+		if seen[field] {
+			return nil, fmt.Errorf("order_by field %q is listed more than once", field)
+		}
+		seen[field] = true
+
+		desc := false
+		if len(words) == 2 {
+			if words[1] != "desc" {
+				return nil, fmt.Errorf("unsupported order_by direction %q: only \"desc\" is allowed", words[1])
+			}
+			desc = true
+		}
+
+		keys = append(keys, db.OrderBy{Field: field, Desc: desc})
+	}
+
+	return keys, nil
 }
