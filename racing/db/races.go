@@ -2,6 +2,7 @@ package db
 
 import (
 	"database/sql"
+	"fmt"
 	"strings"
 	"sync"
 	"time"
@@ -17,8 +18,8 @@ type RacesRepo interface {
 	// Init will initialise our races repository.
 	Init() error
 
-	// List will return a list of races.
-	List(filter *racing.ListRacesRequestFilter) ([]*racing.Race, error)
+	// List will return a list of races, filtered by filter and sorted by orderBy.
+	List(filter *racing.ListRacesRequestFilter, orderBy []OrderBy) ([]*racing.Race, error)
 }
 
 type racesRepo struct {
@@ -43,7 +44,7 @@ func (r *racesRepo) Init() error {
 	return err
 }
 
-func (r *racesRepo) List(filter *racing.ListRacesRequestFilter) ([]*racing.Race, error) {
+func (r *racesRepo) List(filter *racing.ListRacesRequestFilter, orderBy []OrderBy) ([]*racing.Race, error) {
 	var (
 		err   error
 		query string
@@ -53,6 +54,11 @@ func (r *racesRepo) List(filter *racing.ListRacesRequestFilter) ([]*racing.Race,
 	query = getRaceQueries()[racesList]
 
 	query, args = r.applyFilter(query, filter)
+
+	query, err = r.applyOrder(query, orderBy)
+	if err != nil {
+		return nil, err
+	}
 
 	rows, err := r.db.Query(query, args...)
 	if err != nil {
@@ -93,6 +99,63 @@ func (r *racesRepo) applyFilter(query string, filter *racing.ListRacesRequestFil
 	}
 
 	return query, args
+}
+
+// OrderBy is one sort key for List, already validated by the caller.
+type OrderBy struct {
+	Field string // proto field name, e.g. "advertised_start_time"
+	Desc  bool
+}
+
+// sortColumns maps each sortable Race field to the SQL used to sort by it.
+// It is the whitelist for order_by: only these expressions reach the query,
+// never the caller's text. advertised_start_time is stored as text with a
+// time zone offset, so julianday() compares it as a point in time rather
+// than as a string.
+var sortColumns = map[string]string{
+	"id":                    "id",
+	"meeting_id":            "meeting_id",
+	"name":                  "name",
+	"number":                "number",
+	"visible":               "visible",
+	"advertised_start_time": "julianday(advertised_start_time)",
+}
+
+// IsSortableField reports whether field can be used in order_by.
+func IsSortableField(field string) bool {
+	_, ok := sortColumns[field]
+	return ok
+}
+
+func (r *racesRepo) applyOrder(query string, orderBy []OrderBy) (string, error) {
+	var (
+		terms []string
+		hasID bool
+	)
+
+	for _, o := range orderBy {
+		column, ok := sortColumns[o.Field]
+		if !ok {
+			return "", fmt.Errorf("unsupported order field %q", o.Field)
+		}
+
+		direction := "ASC"
+		if o.Desc {
+			direction = "DESC"
+		}
+		terms = append(terms, column+" "+direction)
+
+		if o.Field == "id" {
+			hasID = true
+		}
+	}
+
+	// Always finish with id so races with equal values keep a stable order.
+	if !hasID {
+		terms = append(terms, "id ASC")
+	}
+
+	return query + " ORDER BY " + strings.Join(terms, ", "), nil
 }
 
 func (m *racesRepo) scanRaces(

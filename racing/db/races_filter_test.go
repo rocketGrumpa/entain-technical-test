@@ -109,7 +109,7 @@ func TestListFiltersByVisibility(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			races, err := repo.List(tt.filter)
+			races, err := repo.List(tt.filter, nil)
 			if err != nil {
 				t.Fatalf("List() error: %v", err)
 			}
@@ -118,7 +118,7 @@ func TestListFiltersByVisibility(t *testing.T) {
 			for _, race := range races {
 				gotIDs = append(gotIDs, race.Id)
 			}
-			// List does not guarantee an order, so sort before comparing.
+			// Sorted so this test only checks filtering, not ordering.
 			sort.Slice(gotIDs, func(i, j int) bool { return gotIDs[i] < gotIDs[j] })
 
 			if !reflect.DeepEqual(gotIDs, tt.wantIDs) {
