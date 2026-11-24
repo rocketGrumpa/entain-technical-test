@@ -151,7 +151,7 @@ If `api/proto/racing/racing.proto` doesn't have the field, `api` ignores it with
 
 #### Tests
 
-`racing/db/races_test.go` tests the filter in two ways:
+`racing/db/races_filter_test.go` tests the filter in two ways:
 
 - A unit test checks the SQL that `applyFilter` builds.
 - An integration test runs `List` against an in-memory SQLite database with three fixed races, so the result doesn't depend on the seeded data.
@@ -161,3 +161,48 @@ Run them from the project root:
 ```bash
 cd racing && go test ./...
 ```
+
+### Task 2: order races by advertised start time
+
+`ListRaces` accepts an `orderBy` field. It uses the `order_by` format from [AIP-132](https://google.aip.dev/132#ordering): field names separated by commas, each one optionally followed by ` desc`.
+
+```bash
+curl -X "POST" "http://localhost:8000/v1/list-races" \
+     -H 'Content-Type: application/json' \
+     -d $'{"orderBy": "meeting_id, advertised_start_time desc"}'
+```
+
+- Use the proto field names: `id`, `meeting_id`, `name`, `number`, `visible`, `advertised_start_time`.
+- Only lowercase `desc` is accepted. Leave it out to sort in ascending order.
+- When `orderBy` is empty, races are sorted by `advertised_start_time`, earliest first.
+- `id` is always the last sort key, so races with the same values come back in the same order every time.
+- Start times are compared with SQLite's `julianday()`, so times with different UTC offsets are ordered by the actual time, not as text.
+- An unknown field, a field listed twice, or any other direction returns `400` (gRPC `INVALID_ARGUMENT`) instead of being ignored.
+
+Before, races came back in `id` order. Now they come back by start time:
+
+| Position | Before | After |
+| --- | --- | --- |
+| 1st | id 1, `2021-03-03T01:30:57Z` | id 23, `2021-02-28T06:46:12Z` |
+| 2nd | id 2, `2021-03-02T19:16:58Z` | id 75, `2021-02-28T07:00:50Z` |
+| 3rd | id 3, `2021-03-02T08:30:16Z` | id 76, `2021-02-28T07:09:10Z` |
+
+An invalid value is rejected:
+
+| Request | Response |
+| --- | --- |
+| `{"orderBy": "price"}` | `400`, `unsupported order_by field "price"` |
+
+#### Code changes
+
+- `RacesRepo.List` in `racing/db/races.go` now takes an `orderBy` argument after the filter. Anything that calls `List` needs to pass it.
+- `ListRaces` in `racing/service/racing.go` checks `order_by` and passes it to `List`. Invalid values are rejected here, before the database is called.
+
+#### Tests
+
+`racing/db/races_test.go` is renamed to `racing/db/races_filter_test.go`, so each test file is named after what it tests.
+
+- `racing/db/races_order_test.go`: a unit test checks the `ORDER BY` that `applyOrder` builds. An integration test runs `List` against four races in an in-memory SQLite database. Their start times use different UTC offsets, and two of them start at the same time, to check the time comparison and the `id` tie-break.
+- `racing/service/racing_order_test.go`: checks how `parseOrderBy` reads `order_by`, and that `ListRaces` returns `INVALID_ARGUMENT` for `price` without calling the database.
+
+Run them the same way as task 1.
