@@ -14,6 +14,12 @@ service Racing {
 
 message ListRacesRequest {
   ListRacesRequestFilter filter = 1;
+  // order_by sorts the results, e.g. "meeting_id, advertised_start_time desc".
+  // When empty, races are ordered by advertised_start_time, earliest first.
+  // Races are always ordered by id last, so the order is stable when other
+  // values are equal. An unknown field or direction returns INVALID_ARGUMENT
+  // rather than being ignored.
+  string order_by = 2;
 }
 
 // Response to ListRaces call.
