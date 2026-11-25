@@ -206,3 +206,43 @@ An invalid value is rejected:
 - `racing/service/racing_order_test.go`: checks how `parseOrderBy` reads `order_by`, and that `ListRaces` returns `INVALID_ARGUMENT` for `price` without calling the database.
 
 Run them the same way as task 1.
+
+### Task 3: race status
+
+Every race now has a `status`: `CLOSED` if its `advertised_start_time` is in the past, otherwise `OPEN`. A race that starts exactly now is still `OPEN`.
+
+```json
+{
+  "id": "23",
+  "meetingId": "6",
+  "name": "Idaho wolves",
+  "number": "10",
+  "visible": false,
+  "advertisedStartTime": "2021-02-28T06:46:12Z",
+  "status": "CLOSED"
+}
+```
+
+- The status is worked out each time races are listed, using the current time. It isn't stored in the database.
+- Every race in the seeded database starts in 2021, so they all come back as `CLOSED`. `OPEN` is covered by the tests below.
+- You can't filter or sort by `status`. The default order, `advertised_start_time`, already lists `CLOSED` races before `OPEN` ones.
+
+| | Before | After |
+| --- | --- | --- |
+| `status` of the 100 seeded races | Not in the response | `CLOSED` for all 100 |
+
+#### Code changes
+
+- `Race` in both proto files has a new `status` field. Its values are `OPEN` and `CLOSED`. `STATUS_UNSPECIFIED` is only the default for an unset field; this service always sets `OPEN` or `CLOSED`.
+- `ListRaces` in `racing/service/racing.go` sets the status of each race. It reads the current time once per request, so races with the same start time always get the same status.
+
+#### Tests
+
+`racing/service/racing_status_test.go`:
+
+- `TestRaceStatus` checks the rule against a fixed time: one second before is `CLOSED`, exactly now and one second after are `OPEN`.
+- `TestListRacesSetsStatus` checks that `ListRaces` sets the status of every race. The start times are in 2000 and 2999, so the result doesn't depend on when the test runs.
+
+#### CI
+
+`.github/workflows/test.yml` runs on every pull request with Go 1.27.4. It runs `go vet` and `go test` in `racing`, and `go build` in `api`.

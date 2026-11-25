@@ -1,0 +1,23 @@
+name: test
+
+on:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version: "1.27.4"
+
+      - name: Vet and test racing
+        working-directory: racing
+        run: |
+          go vet ./...
+          go test ./...
+
+      - name: Build api
+        working-directory: api
+        run: go build ./...
