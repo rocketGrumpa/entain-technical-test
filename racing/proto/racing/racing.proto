@@ -8,6 +8,10 @@ import "google/protobuf/timestamp.proto";
 service Racing {
   // ListRaces will return a collection of all races.
   rpc ListRaces(ListRacesRequest) returns (ListRacesResponse) {}
+  
+  // GetRace returns a single race by its id. It returns NOT_FOUND if there
+  // is no race with that id, and INVALID_ARGUMENT if id is zero or negative.
+  rpc GetRace(GetRaceRequest) returns (Race) {}
 }
 
 /* Requests/Responses */
@@ -38,6 +42,12 @@ message ListRacesRequestFilter {
   // tell "not set" apart from false, so a field called visible would be
   // ambiguous about whether false means "all races" or "hidden races only".
   bool only_visible = 2;
+}
+
+// Request for GetRace call.
+message GetRaceRequest {
+  // id of the race to return.
+  int64 id = 1;
 }
 
 /* Resources */

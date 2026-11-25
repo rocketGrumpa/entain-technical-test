@@ -2,6 +2,7 @@ package db
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -13,6 +14,9 @@ import (
 	"git.neds.sh/matty/entain/racing/proto/racing"
 )
 
+// ErrNotFound is returned by Get when no race has the given id.
+var ErrNotFound = errors.New("race not found")
+
 // RacesRepo provides repository access to races.
 type RacesRepo interface {
 	// Init will initialise our races repository.
@@ -20,6 +24,9 @@ type RacesRepo interface {
 
 	// List will return a list of races, filtered by filter and sorted by orderBy.
 	List(filter *racing.ListRacesRequestFilter, orderBy []OrderBy) ([]*racing.Race, error)
+
+	// Get will return the race with the given id, or ErrNotFound if there is none.
+	Get(id int64) (*racing.Race, error)
 }
 
 type racesRepo struct {
@@ -66,6 +73,28 @@ func (r *racesRepo) List(filter *racing.ListRacesRequestFilter, orderBy []OrderB
 	}
 
 	return r.scanRaces(rows)
+}
+
+func (r *racesRepo) Get(id int64) (*racing.Race, error) {
+	query := getRaceQueries()[racesList] + " WHERE id = ?"
+
+	rows, err := r.db.Query(query, id)
+	if err != nil {
+		return nil, err
+	}
+	// Close rows on every return path, so an error part way through scanning
+	// doesn't leave the connection checked out.
+	defer rows.Close()
+
+	races, err := r.scanRaces(rows)
+	if err != nil {
+		return nil, err
+	}
+	if len(races) == 0 {
+		return nil, ErrNotFound
+	}
+
+	return races[0], nil
 }
 
 func (r *racesRepo) applyFilter(query string, filter *racing.ListRacesRequestFilter) (string, []interface{}) {

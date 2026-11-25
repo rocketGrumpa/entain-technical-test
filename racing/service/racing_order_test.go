@@ -59,6 +59,8 @@ func (f *fakeRepo) List(*racing.ListRacesRequestFilter, []db.OrderBy) ([]*racing
 	return nil, nil
 }
 
+func (f *fakeRepo) Get(int64) (*racing.Race, error) { return nil, nil }
+
 func TestListRacesRejectsInvalidOrderBy(t *testing.T) {
 	repo := &fakeRepo{}
 	svc := NewRacingService(repo)

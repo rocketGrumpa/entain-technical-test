@@ -246,3 +246,52 @@ Every race now has a `status`: `CLOSED` if its `advertised_start_time` is in the
 #### CI
 
 `.github/workflows/test.yml` runs on every pull request with Go 1.27.4. It runs `go vet` and `go test` in `racing`, and `go build` in `api`.
+
+### Task 4: get a single race
+
+`GetRace` returns one race by its id. Through the REST gateway it is `GET /v1/races/{id}`:
+
+```bash
+curl "http://localhost:8000/v1/races/1"
+```
+
+```json
+{
+  "id": "1",
+  "meetingId": "5",
+  "name": "North Dakota foes",
+  "number": "2",
+  "visible": false,
+  "advertisedStartTime": "2021-03-03T01:30:57Z",
+  "status": "CLOSED"
+}
+```
+
+- The response is the race itself, in the same shape as each race from `ListRaces`, including `status`.
+- A race is returned whether or not it is visible.
+- An id of zero or less returns `400` instead of `404`. Zero is the default value in proto3, so it usually means the caller forgot to set the id.
+
+| Request | Before | After |
+| --- | --- | --- |
+| `GET /v1/races/1` | `404`, the route didn't exist | `200`, race 1 |
+
+Errors:
+
+| Request | Response |
+| --- | --- |
+| `GET /v1/races/999` | `404`, `race 999 not found` |
+| `GET /v1/races/0` | `400`, `id must be greater than zero, got 0` |
+| `GET /v1/races/abc` | `400`, from the gateway, because the id isn't a number |
+
+#### Code changes
+
+- `GetRace` and its request message, `GetRaceRequest`, are added to `api/proto/racing/racing.proto` and `racing/proto/racing/racing.proto`.
+- Only `api/proto/racing/racing.proto` has the `GET /v1/races/{id}` route, because the `api` service is the one that turns HTTP requests into gRPC calls to `racing`.
+- `RacesRepo` in `racing/db/races.go` has a new `Get` method, which returns `ErrNotFound` when no race has the id. It uses the same query as `List` with `WHERE id = ?`. `List` itself is unchanged.
+- `GetRace` in `racing/service/racing.go` checks the id, calls `Get`, and sets the status the same way as `ListRaces`.
+- The fake repositories in `racing/service/racing_order_test.go` and `racing/service/racing_status_test.go` now have a `Get` method, because `RacesRepo` requires it.
+
+#### Tests
+
+- `racing/db/races_get_test.go`: runs `Get` against two races in an in-memory SQLite database. It checks that a race is returned even when it isn't visible, and that a missing id returns `ErrNotFound`.
+- `racing/service/racing_get_test.go`: checks that `GetRace` sets the status, returns `NOT_FOUND` for a missing race, and returns `INVALID_ARGUMENT` for a zero or negative id without calling the database.

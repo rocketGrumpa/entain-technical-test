@@ -45,6 +45,8 @@ func (s *racesRepoStub) List(*racing.ListRacesRequestFilter, []db.OrderBy) ([]*r
 	return s.races, nil
 }
 
+func (s *racesRepoStub) Get(int64) (*racing.Race, error) { return nil, nil }
+
 // TestListRacesSetsStatus checks that ListRaces sets a status on every race.
 // The start times are far in the past and far in the future, so the result
 // doesn't depend on when the test runs.
