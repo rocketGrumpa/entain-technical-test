@@ -3,6 +3,7 @@ package service
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"git.neds.sh/matty/entain/racing/db"
 	"git.neds.sh/matty/entain/racing/proto/racing"
@@ -39,7 +40,24 @@ func (s *racingService) ListRaces(ctx context.Context, in *racing.ListRacesReque
 		return nil, err
 	}
 
+	// Read the clock once, so every race in this response is judged at the
+	// same moment, even if the loop runs across a second boundary.
+	now := time.Now()
+	for _, race := range races {
+		race.Status = raceStatus(race.GetAdvertisedStartTime().AsTime(), now)
+	}
+
 	return &racing.ListRacesResponse{Races: races}, nil
+}
+
+// raceStatus returns CLOSED when start is in the past and OPEN otherwise.
+// A race that starts exactly at now is still OPEN, because it isn't in the
+// past yet.
+func raceStatus(start, now time.Time) racing.Race_Status {
+	if start.Before(now) {
+		return racing.Race_CLOSED
+	}
+	return racing.Race_OPEN
 }
 
 // parseOrderBy turns an order_by value such as
