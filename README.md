@@ -295,3 +295,76 @@ Errors:
 
 - `racing/db/races_get_test.go`: runs `Get` against two races in an in-memory SQLite database. It checks that a race is returned even when it isn't visible, and that a missing id returns `ErrNotFound`.
 - `racing/service/racing_get_test.go`: checks that `GetRace` sets the status, returns `NOT_FOUND` for a missing race, and returns `INVALID_ARGUMENT` for a zero or negative id without calling the database.
+
+### Task 5: sports service
+
+`sports` is a separate gRPC service with one RPC, `ListEvents`. The `api` service sends `POST /v1/list-events` to it, the same way it sends `POST /v1/list-races` to `racing`.
+
+Start all three services, each in its own terminal:
+
+```bash
+cd ./racing && go build && ./racing
+cd ./sports && go build && ./sports
+cd ./api && go build && ./api
+```
+
+Then list the events:
+
+```bash
+curl -X "POST" "http://localhost:8000/v1/list-events" \
+     -H 'Content-Type: application/json' \
+     -d $'{}'
+```
+
+```json
+{
+  "events": [
+    {
+      "id": "1",
+      "name": "Philadelphia Phillies vs Chicago Cubs",
+      "advertisedStartTime": "2026-11-25T13:31:18Z",
+      "sport": "Baseball",
+      "competition": "MLB",
+      "homeTeam": "Chicago Cubs",
+      "awayTeam": "Philadelphia Phillies"
+    }
+  ]
+}
+```
+
+The real response has 100 events; this shows the first one.
+
+- An event has `id`, `name`, `advertised_start_time`, `sport`, `competition`, `home_team` and `away_team`. The teams have their own fields, so clients don't need to split `name`, which is only for display. `sport` and `competition` are plain text, so adding one doesn't need a proto change.
+- `sports/db/sports.db` holds 100 MLB games between the 30 teams, made once by the seed. It is committed, like `racing/db/racing.db`, so running `sports` gives the same games as the example above.
+- The tests don't use `sports/db/sports.db`. They build their own data in an in-memory database, so they don't depend on the date.
+- `ListEvents` has no filter or ordering. Tasks 1 to 4 were asked for racing, not for sports.
+- `sports` listens on `localhost:9001`, and `api` sends sports requests to that address. To use a different address, pass the new address to both services, for example:
+
+  ```bash
+  ./sports -grpc-endpoint=localhost:9101
+  ./api -sports-grpc-endpoint=localhost:9101
+  ```
+
+#### Code changes
+
+- `sports/` is a new Go module with the same layout as `racing/`: `main.go`, `service/sports.go`, `db/` and `proto/`.
+- `api/proto/sports/sports.proto` is the `api` copy of the sports proto, with the `POST /v1/list-events` route. `api/main.go` registers it.
+- `.github/workflows/test.yml` now also runs `go vet` and `go test` in `sports`.
+- `.gitignore` ignores the `sports/sports` binary.
+
+#### Tests
+
+- `sports/db/events_list_test.go`: runs `List` against two events in an in-memory SQLite database and checks every field, including a start time with a `+10:00` offset.
+- `sports/db/db_seed_test.go`: runs the seed on an empty in-memory database and checks that it makes 100 MLB games, each with two different MLB teams as home and away, a name made from them, and a start time within the expected range.
+- `sports/service/sports_list_test.go`: checks that `ListEvents` returns the events from the repository, and that a database error reaches the client as `INTERNAL` without the database's own message.
+
+Run them with `cd sports && go test ./...`.
+
+### Out of scope
+
+These are in the original code and aren't part of the five tasks, so they're left as they are to keep each PR to its task. `sports` doesn't repeat them.
+
+1. **Racing can leave database connections open.** In `racing/db/races.go`, `List` never calls `rows.Close()`. Rows close by themselves once every row is read, but if scanning returns early with an error, the connection stays open, and these can build up. `Get`, added in Task 4, closes its rows with `defer`. *Found while reading the racing code before Task 1.*
+2. **The generator install command doesn't install the generators on current Go.** The Note above the Changes section uses `go get`, which since Go 1.18 only updates `go.mod`. `go install` is needed instead. *Found while setting up the project before Task 1.*
+3. **Racing can return part of the results as if they were all of them.** In `racing/db/races.go`, `scanRaces` doesn't check `rows.Err()` after the loop. If reading stops because of an error, the races read so far are returned with no error. *Found while writing the `sports` repository in Task 5.*
+4. **The racing seed can hide a failed insert.** In `racing/db/db.go`, `seed` carries on after an error and only returns the result of the last insert, so the service can start with races missing and no error. *Found while writing the `sports` seed in Task 5.*

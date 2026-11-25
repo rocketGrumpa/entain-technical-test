@@ -1,0 +1,57 @@
+package main
+
+import (
+	"database/sql"
+	"flag"
+	"log"
+	"net"
+
+	"google.golang.org/grpc"
+
+	"git.neds.sh/matty/entain/sports/db"
+	"git.neds.sh/matty/entain/sports/proto/sports"
+	"git.neds.sh/matty/entain/sports/service"
+)
+
+var (
+	grpcEndpoint = flag.String("grpc-endpoint", "localhost:9001", "gRPC server endpoint")
+)
+
+func main() {
+	flag.Parse()
+
+	if err := run(); err != nil {
+		log.Fatalf("failed running grpc server: %s\n", err)
+	}
+}
+
+func run() error {
+	// Listen on the address from -grpc-endpoint.
+	conn, err := net.Listen("tcp", *grpcEndpoint)
+	if err != nil {
+		return err
+	}
+
+	sportsDB, err := sql.Open("sqlite3", "./db/sports.db")
+	if err != nil {
+		return err
+	}
+
+	eventsRepo := db.NewEventsRepo(sportsDB)
+	if err := eventsRepo.Init(); err != nil {
+		return err
+	}
+
+	grpcServer := grpc.NewServer()
+
+	sports.RegisterSportsServer(
+		grpcServer,
+		service.NewSportsService(
+			eventsRepo,
+		),
+	)
+
+	log.Printf("gRPC server listening on: %s\n", *grpcEndpoint)
+
+	return grpcServer.Serve(conn)
+}

@@ -1,0 +1,47 @@
+syntax = "proto3";
+package sports;
+
+option go_package = "/sports";
+
+import "google/protobuf/timestamp.proto";
+import "google/api/annotations.proto";
+
+service Sports {
+  // ListEvents returns a list of all sports events.
+  rpc ListEvents(ListEventsRequest) returns (ListEventsResponse) {
+    option (google.api.http) = { post: "/v1/list-events", body: "*" };
+  }
+}
+
+/* Requests/Responses */
+
+// Request for ListEvents call. It is empty because ListEvents returns every
+// event; gRPC still needs a request message.
+message ListEventsRequest {}
+
+// Response to ListEvents call.
+message ListEventsResponse {
+  repeated Event events = 1;
+}
+
+/* Resources */
+
+// Event is a single sports game, such as one baseball game.
+message Event {
+  // ID uniquely identifies the event.
+  int64 id = 1;
+  // Name is how the event is shown, made from the two teams, e.g.
+  // "New York Yankees vs Boston Red Sox".
+  string name = 2;
+  // AdvertisedStartTime is when the event is advertised to start.
+  google.protobuf.Timestamp advertised_start_time = 3;
+  // Sport is the name of the sport, e.g. "Baseball". It is plain text rather
+  // than a fixed list, so adding a sport doesn't need a proto change.
+  string sport = 4;
+  // Competition is the league or tournament, e.g. "MLB".
+  string competition = 5;
+  // HomeTeam is the team playing at home, e.g. "Boston Red Sox".
+  string home_team = 6;
+  // AwayTeam is the visiting team, e.g. "New York Yankees".
+  string away_team = 7;
+}
