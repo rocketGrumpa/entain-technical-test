@@ -1,6 +1,7 @@
 package service
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -15,6 +16,8 @@ import (
 type Racing interface {
 	// ListRaces will return a collection of races.
 	ListRaces(ctx context.Context, in *racing.ListRacesRequest) (*racing.ListRacesResponse, error)
+	// GetRace will return a single race by its id.
+	GetRace(ctx context.Context, in *racing.GetRaceRequest) (*racing.Race, error)
 }
 
 // racingService implements the Racing interface.
@@ -48,6 +51,27 @@ func (s *racingService) ListRaces(ctx context.Context, in *racing.ListRacesReque
 	}
 
 	return &racing.ListRacesResponse{Races: races}, nil
+}
+
+func (s *racingService) GetRace(ctx context.Context, in *racing.GetRaceRequest) (*racing.Race, error) {
+	// Zero is the proto3 default, so an id of zero usually means the caller
+	// forgot to set it. Report it as a bad request rather than NOT_FOUND, so
+	// the caller can tell a mistake in the request from a missing race.
+	if in.GetId() <= 0 {
+		return nil, status.Errorf(codes.InvalidArgument, "id must be greater than zero, got %d", in.GetId())
+	}
+
+	race, err := s.racesRepo.Get(in.GetId())
+	if errors.Is(err, db.ErrNotFound) {
+		return nil, status.Errorf(codes.NotFound, "race %d not found", in.GetId())
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	race.Status = raceStatus(race.GetAdvertisedStartTime().AsTime(), time.Now())
+
+	return race, nil
 }
 
 // raceStatus returns CLOSED when start is in the past and OPEN otherwise.
